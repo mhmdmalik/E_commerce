@@ -1,73 +1,92 @@
-
 <?php
 require 'config.php';
-$cart = $_SESSION['cart'] ?? [];
-if (empty($cart)) { header('Location: cart.php'); exit; }
-
-// For demo: create a simple order (no payment integration)
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // compute totals
-    $subtotal = 0;
-    foreach($cart as $vid=>$c) $subtotal += $c['price'] * $c['qty'];
-
-    // generate order id and order number
-    $order_id = bin2hex(random_bytes(16)); // 32-char hex UUID alternative
-    $order_number = 'ORD-'.date('YmdHis').'-'.substr(bin2hex(random_bytes(4)),0,8);
-
-    // insert into orders
-    $stmt = $mysqli->prepare('INSERT INTO orders (id, order_number, user_id, total, status) VALUES (?, ?, NULL, ?, ?)');
-    $status = 'confirmed';
-    $stmt->bind_param('ssds', $order_id, $order_number, $subtotal, $status);
-    $stmt->execute();
-
-    // Insert order items
-    foreach($cart as $vid=>$c){
-        $line = $c['price'] * $c['qty'];
-        $item_id = bin2hex(random_bytes(16));
-        $stmt2 = $mysqli->prepare('INSERT INTO order_items (id, order_id, variant_id, quantity, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?)');
-        $stmt2->bind_param('sssidd', $item_id, $order_id, $vid, $c['qty'], $c['price'], $line);
-        $stmt2->execute();
-    }
-
-// clear cart
-unset($_SESSION['cart']);
-echo '<div class="card order-success">
-        <h2>✅ Order Placed!</h2>
-        <p>Order number: '.htmlspecialchars($order_number).'</p>
-        <a class="btn" href="home.php">Back to shop</a>
-      </div>';
-exit;
-
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
 
-// show summary
-$subtotal = 0; foreach($cart as $c) $subtotal += $c['price']*$c['qty'];
-?>
+$cart = $_SESSION['cart'] ?? [];
 
+if (empty($cart)) {
+    header('Location: cart.php');
+    exit;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($cart)) {
+    // Generate unique order number
+    $order_number = "ORD-" . date("YmdHis") . "-" . substr(uniqid(), -6);
+
+    // Calculate total
+    $total = 0;
+    foreach ($cart as $c) {
+        $total += $c['price'] * $c['qty'];
+    }
+
+    // Example user_id (replace with logged-in user's id if available)
+    $user_id = $_SESSION['user_id'] ?? 1;
+
+    // Insert into orders
+    $stmt = $mysqli->prepare("INSERT INTO orders (order_number, user_id, status, total) VALUES (?, ?, 'Pending', ?)");
+    if (!$stmt) {
+        die("Prepare failed: " . $mysqli->error);
+    }
+    $stmt->bind_param("sid", $order_number, $user_id, $total);
+
+    if ($stmt->execute()) {
+        $order_id = $stmt->insert_id;
+    } else {
+        die("Order insert failed: " . $stmt->error);
+    }
+
+    // Make sure order_id is valid
+    if ($order_id > 0) {
+        // Insert order items
+        $stmt_item = $mysqli->prepare(
+            "INSERT INTO order_items (order_id, variant_id, quantity, unit_price, line_total) 
+             VALUES (?, ?, ?, ?, ?)"
+        );
+        if (!$stmt_item) {
+            die("Prepare failed: " . $mysqli->error);
+        }
+
+        foreach ($cart as $vid => $c) {
+            $line_total = $c['price'] * $c['qty'];
+            $unit_price = $c['price'];
+            $stmt_item->bind_param("iiidd", $order_id, $vid, $c['qty'], $unit_price, $line_total);
+
+            if (!$stmt_item->execute()) {
+                die("Order item insert failed: " . $stmt_item->error);
+            }
+        }
+    }
+
+    // Clear cart
+    unset($_SESSION['cart']);
+}
+?>
 <!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
-<link rel="stylesheet" href="/ecommerce/assets/style.css">
-
-
-
   <title>Checkout</title>
+  <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
-  <header>
-    <h1>Checkout</h1>
-    <a href="cart.php">← Back to Cart</a>
-  </header>
-
-  <main>
-    <div class="card">
-      <h2>Order Summary</h2>
-      <p>Subtotal: ₹<?php echo number_format($subtotal,2); ?></p>
-      <form method="post">
-        <button type="submit">Place order (demo)</button>
-      </form>
+<header>
+  <h1>My Shop</h1>
+</header>
+<main>
+  <?php if (isset($order_number)): ?>
+    <div class="success">
+      <p>✅ Order placed successfully!</p>
+      <p><strong>Order number:</strong> <?php echo htmlspecialchars($order_number); ?></p>
+      <p><strong>Amount Paid:</strong> ₹<?php echo number_format($total, 2); ?></p>
+      <a href="view_order.php?order_id=<?php echo $order_id; ?>" class="btn">View Order Details</a>
+      <a href="index.php" class="btn">← Back to shop</a>
     </div>
-  </main>
+  <?php else: ?>
+    <p>No order was placed.</p>
+    <a href="cart.php" class="btn">Back to Cart</a>
+  <?php endif; ?>
+</main>
 </body>
 </html>

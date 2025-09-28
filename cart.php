@@ -1,44 +1,59 @@
 <?php
 require 'config.php';
-// update quantities
-if ($_SERVER['REQUEST_METHOD']==='POST' && isset($_POST['update'])) {
-    foreach($_POST['qty'] as $vid => $q) {
-        $q = max(0,(int)$q);
-        if ($q == 0) {
-            unset($_SESSION['cart'][$vid]);
-        } else {
-            $_SESSION['cart'][$vid]['qty'] = $q;
-        }
-    }
-    header('Location: cart.php'); exit;
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
 }
+
 $cart = $_SESSION['cart'] ?? [];
-$subtotal = 0;
-foreach($cart as $c) $subtotal += $c['price'] * $c['qty'];
 ?>
 <!doctype html>
-<html><head><meta charset="utf-8"><link rel="stylesheet" href="assets/style.css"><title>Cart</title></head>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>My Cart</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
 <body>
-<a href="home.php">← Continue shopping</a>
-<h1>Your Cart</h1>
-<?php if(empty($cart)): ?>
-  <p>Cart is empty</p>
-<?php else: ?>
-  <form method="post">
-  <table>
-    <tr><th>Item</th><th>Unit</th><th>Qty</th><th>Line</th></tr>
-    <?php foreach($cart as $vid => $c): ?>
+<header>
+  <h1>My Shop</h1>
+  <a href="index.php">← Continue Shopping</a>
+</header>
+<main>
+  <h2>Your Cart</h2>
+  <?php if (empty($cart)): ?>
+    <p>Your cart is empty.</p>
+  <?php else: ?>
+    <table>
       <tr>
-        <td><?php echo h($c['title']); ?></td>
-        <td>₹<?php echo number_format($c['price'],2); ?></td>
-        <td><input type="number" name="qty[<?php echo h($vid); ?>]" value="<?php echo h($c['qty']); ?>" min="0"></td>
-        <td>₹<?php echo number_format($c['price']*$c['qty'],2); ?></td>
+        <th>Product</th>
+        <th>Quantity</th>
+        <th>Price</th>
+        <th>Subtotal</th>
       </tr>
-    <?php endforeach; ?>
-  </table>
-  <p>Subtotal: ₹<?php echo number_format($subtotal,2); ?></p>
-  <button name="update" type="submit">Update Cart</button>
-  <a href="checkout.php" class="btn">Checkout</a>
-  </form>
-<?php endif; ?>
-</body></html>
+      <?php
+      $total = 0;
+      foreach ($cart as $c):
+          $subtotal = $c['price'] * $c['qty'];
+          $total += $subtotal;
+      ?>
+      <tr>
+        <td><?php echo htmlspecialchars($c['title']); ?></td>
+        <td><?php echo $c['qty']; ?></td>
+        <td>₹<?php echo number_format($c['price'], 2); ?></td>
+        <td>₹<?php echo number_format($subtotal, 2); ?></td>
+      </tr>
+      <?php endforeach; ?>
+      <tr>
+        <td colspan="3" align="right"><strong>Total</strong></td>
+        <td><strong>₹<?php echo number_format($total, 2); ?></strong></td>
+      </tr>
+    </table>
+
+    <!-- Place Order button -->
+    <form action="checkout.php" method="post">
+      <button type="submit">Place Order</button>
+    </form>
+  <?php endif; ?>
+</main>
+</body>
+</html>
